@@ -22,6 +22,7 @@ num_colors = len(colors)
 st.set_page_config(
     page_title='Toggl dashboard',
     page_icon=':clock2:', # This is an emoji shortcode. Could be a URL too.
+    layout='wide'
 )
 
 # -----------------------------------------------------------------------------
@@ -46,7 +47,7 @@ def get_gdp_data():
 
     # later: st.secrets.key
     headers = {'content-type': 'application/json', 
-               'Authorization': 'Basic %s' %  'MjczMGYyMTQ0MDAxOThjZjlhN2Q1YjMwODkzNDBjNDI6YXBpX3Rva2Vu'}
+               'Authorization': 'Basic %s' %  st.secrets.key}
 
     # Get clients
     data = requests.get(
@@ -94,6 +95,7 @@ def get_gdp_data():
     projects = projects.dropna(subset=['hourly_rate'])
     projects['Left'] = projects['actual_hours'].cumsum() - projects['actual_hours']
     projects['hover_text'] = projects.apply(hovertext, axis=1)
+    projects['color'] = [colors[i % num_colors] for i in range(len(projects))]
 
     # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
     DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
@@ -139,12 +141,10 @@ gdp_df,projects = get_gdp_data()
 # Set the title that appears at the top of the page.
 '''
 # :clock2: Toggl dashboard
-
-### All time history of Toggl projects:
 '''
 
-# Toggl chart
-projects['color'] = [colors[i % num_colors] for i in range(len(projects))]
+# Toggl charts
+config = {'displayModeBar': False}
 
 fig = go.Figure()
 
@@ -162,12 +162,9 @@ fig.add_trace(go.Bar(
     hovertext='hover_text'
 ))
 
-# Average hourly rate
-all_time_rate = projects['fee_to_date'].sum() / projects['actual_hours'].sum()
-print(all_time_rate)
-
 # Update layout
 fig.update_layout(
+    margin=dict(l=20, r=20, t=20, b=20),
     height=600,  # Set the height of the figure to be taller
     width=800,   # Set the width of the figure to be narrower
     yaxis_title='Hours',
@@ -182,18 +179,17 @@ fig.update_layout(
 fig.update_xaxes(showline=True, linewidth=1, linecolor='black', gridcolor='rgba(0,0,0,0)')
 fig.update_yaxes(showline=True, linewidth=1, linecolor='black', gridcolor='rgba(0,0,0,0)')
 
-st.plotly_chart(fig, use_container_width=True)
+# All-time hourly rate
+all_time_rate = projects['fee_to_date'].sum() / projects['actual_hours'].sum()
 
-# Add some spacing
-''
-'### Projects that are active or ended < 7 days ago '
+# Recent projects
 recents = projects.loc[datetime.now() - projects['end_date'] < timedelta(days=7)].copy()
 recents['Left'] = recents['actual_hours'].cumsum() - recents['actual_hours']
 recents['color'] = [colors[i % num_colors] for i in range(len(recents))]
 
+# Create horizontal bar chart
 actives_fig = go.Figure()
 
-# Create horizontal bar chart
 actives_fig.add_trace(go.Bar(
     y=recents['Left'] + recents['Hours'] / 2,
     x=recents['Effective $/hr'],
@@ -207,12 +203,9 @@ actives_fig.add_trace(go.Bar(
     hovertext='hover_text'
 ))
 
-# Average hourly rate
-recent_rate = recents['fee_to_date'].sum() / recents['actual_hours'].sum()
-print(recent_rate)
-
 # Update layout
 actives_fig.update_layout(
+    margin=dict(l=20, r=20, t=20, b=20),
     height=600,  # Set the height of the figure to be taller
     width=800,   # Set the width of the figure to be narrower
     yaxis_title='Hours',
@@ -227,81 +220,105 @@ actives_fig.update_layout(
 actives_fig.update_xaxes(showline=True, linewidth=1, linecolor='black', gridcolor='rgba(0,0,0,0)')
 actives_fig.update_yaxes(showline=True, linewidth=1, linecolor='black', gridcolor='rgba(0,0,0,0)')
 
-# Show the figure
-st.plotly_chart(actives_fig, use_container_width=True)
+# Average hourly rate
+recent_rate = recents['fee_to_date'].sum() / recents['actual_hours'].sum()
 
-# Old GDP charts
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
+# Display all
+data_container = st.container()
 
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
-
-countries = gdp_df['Country Code'].unique()
-
-if not len(countries):
-    st.warning("Select at least one country")
-
-selected_countries = st.multiselect(
-    'Which countries would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
-
-''
-''
-''
-
-# Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
-]
-
-st.header('GDP over time', divider='gray')
-
-''
-
-st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
-)
-
-''
-''
-
-
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
-
-st.header(f'GDP in {to_year}', divider='gray')
-
-''
-
-cols = st.columns(4)
-
-for i, country in enumerate(selected_countries):
-    col = cols[i % len(cols)]
-
-    with col:
-        first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
-        else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
-
+with data_container:
+    all_time, actives = st.columns(2)
+    with all_time:
+        '### All time history of Toggl projects'
         st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
+            label=f'All-time Hourly Rate',
+            value=f'${all_time_rate:,.0f}/hr',
         )
+        st.plotly_chart(fig, use_container_width=True, config=config)
+
+    with actives:
+        '### Active or <7 day old projects only'
+        st.metric(
+            label=f'Active Hourly Rate',
+            value=f'${recent_rate:,.0f}/hr',
+        )
+        st.plotly_chart(actives_fig, use_container_width=True, config=config)
+
+''
+''
+
+# '# Old template charts, ignore me'
+# min_value = gdp_df['Year'].min()
+# max_value = gdp_df['Year'].max()
+
+# from_year, to_year = st.slider(
+#     'Which years are you interested in?',
+#     min_value=min_value,
+#     max_value=max_value,
+#     value=[min_value, max_value])
+
+# countries = gdp_df['Country Code'].unique()
+
+# if not len(countries):
+#     st.warning("Select at least one country")
+
+# selected_countries = st.multiselect(
+#     'Which countries would you like to view?',
+#     countries,
+#     ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
+
+# ''
+# ''
+# ''
+
+# # Filter the data
+# filtered_gdp_df = gdp_df[
+#     (gdp_df['Country Code'].isin(selected_countries))
+#     & (gdp_df['Year'] <= to_year)
+#     & (from_year <= gdp_df['Year'])
+# ]
+
+# st.header('GDP over time', divider='gray')
+
+# ''
+
+# st.line_chart(
+#     filtered_gdp_df,
+#     x='Year',
+#     y='GDP',
+#     color='Country Code',
+# )
+
+# ''
+# ''
+
+
+# first_year = gdp_df[gdp_df['Year'] == from_year]
+# last_year = gdp_df[gdp_df['Year'] == to_year]
+
+# st.header(f'GDP in {to_year}', divider='gray')
+
+# ''
+
+# cols = st.columns(4)
+
+# for i, country in enumerate(selected_countries):
+#     col = cols[i % len(cols)]
+
+#     with col:
+#         first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
+#         last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
+
+#         if math.isnan(first_gdp):
+#             growth = 'n/a'
+#             delta_color = 'off'
+#         else:
+#             growth = f'{last_gdp / first_gdp:,.2f}x'
+#             delta_color = 'normal'
+
+#         st.metric(
+#             label=f'{country} GDP',
+#             value=f'{last_gdp:,.0f}B',
+#             delta=growth,
+#             delta_color=delta_color
+#         )
