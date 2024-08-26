@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import requests
-# import plotly.graph_objects as go
+import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import math
 from pathlib import Path
@@ -26,6 +26,14 @@ st.set_page_config(
 
 # -----------------------------------------------------------------------------
 # Declare some useful functions.
+
+def hovertext(row):
+    f = f'Fee to date: ${row["fee_to_date"]:,.0f}'
+    h = f'Hours: {row["Hours"]:.0f}'
+    r = f'Effective rate: ${row["Effective $/hr"]:.0f}/hr'
+    e = f'End date: {row["end_date"]}'
+    
+    return '<br>'.join([f,h,r,e])
 
 @st.cache_data(ttl='1d')
 def get_gdp_data():
@@ -85,6 +93,7 @@ def get_gdp_data():
 
     projects = projects.dropna(subset=['hourly_rate'])
     projects['Left'] = projects['actual_hours'].cumsum() - projects['actual_hours']
+    projects['hover_text'] = projects.apply(hovertext, axis=1)
 
     # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
     DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
@@ -131,21 +140,97 @@ gdp_df,projects = get_gdp_data()
 '''
 # :clock2: Toggl dashboard
 
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
+### All time history of Toggl projects:
 '''
-
-# Add some spacing
-''
-''
-
 
 # Toggl chart
 projects['color'] = [colors[i % num_colors] for i in range(len(projects))]
 
+fig = go.Figure()
 
-# Old GPT charts
+# Create horizontal bar chart
+fig.add_trace(go.Bar(
+    y=projects['Left'] + projects['Hours'] / 2,
+    x=projects['Effective $/hr'],
+    orientation='h',
+    width=projects['Hours'],
+    marker=dict(color=projects['color']),
+    name='Effective $/hr',
+    text=projects['Label'],
+    textposition='outside',
+    hovertemplate=projects['hover_text'] + '<extra></extra>',  # Custom hover text without extra info
+    hovertext='hover_text'
+))
+
+# Average hourly rate
+all_time_rate = projects['fee_to_date'].sum() / projects['actual_hours'].sum()
+print(all_time_rate)
+
+# Update layout
+fig.update_layout(
+    height=600,  # Set the height of the figure to be taller
+    width=800,   # Set the width of the figure to be narrower
+    yaxis_title='Hours',
+    xaxis_title='Effective $/hr',
+    xaxis=dict(range=[0, projects['Effective $/hr'].max()*1.5]),
+    showlegend=False,
+    plot_bgcolor='white',  # Set the plot background color to white
+    paper_bgcolor='white'  # Set the paper background color to white
+)
+
+# Remove top and right spines (equivalent in Plotly is removing gridlines)
+fig.update_xaxes(showline=True, linewidth=1, linecolor='black', gridcolor='rgba(0,0,0,0)')
+fig.update_yaxes(showline=True, linewidth=1, linecolor='black', gridcolor='rgba(0,0,0,0)')
+
+st.plotly_chart(fig, use_container_width=True)
+
+# Add some spacing
+''
+'### Projects that are active or ended < 7 days ago '
+recents = projects.loc[datetime.now() - projects['end_date'] < timedelta(days=7)].copy()
+recents['Left'] = recents['actual_hours'].cumsum() - recents['actual_hours']
+recents['color'] = [colors[i % num_colors] for i in range(len(recents))]
+
+actives_fig = go.Figure()
+
+# Create horizontal bar chart
+actives_fig.add_trace(go.Bar(
+    y=recents['Left'] + recents['Hours'] / 2,
+    x=recents['Effective $/hr'],
+    orientation='h',
+    width=recents['Hours'],
+    marker=dict(color=recents['color']),
+    name='Effective $/hr',
+    text=recents['Label'],
+    textposition='outside',
+    hovertemplate=recents['hover_text'] + '<extra></extra>',  # Custom hover text without extra info
+    hovertext='hover_text'
+))
+
+# Average hourly rate
+recent_rate = recents['fee_to_date'].sum() / recents['actual_hours'].sum()
+print(recent_rate)
+
+# Update layout
+actives_fig.update_layout(
+    height=600,  # Set the height of the figure to be taller
+    width=800,   # Set the width of the figure to be narrower
+    yaxis_title='Hours',
+    xaxis_title='Effective $/hr',
+    xaxis=dict(range=[0, recents['Effective $/hr'].max()*1.5]),
+    showlegend=False,
+    plot_bgcolor='white',  # Set the plot background color to white
+    paper_bgcolor='white'  # Set the paper background color to white
+)
+
+# Remove top and right spines (equivalent in Plotly is removing gridlines)
+actives_fig.update_xaxes(showline=True, linewidth=1, linecolor='black', gridcolor='rgba(0,0,0,0)')
+actives_fig.update_yaxes(showline=True, linewidth=1, linecolor='black', gridcolor='rgba(0,0,0,0)')
+
+# Show the figure
+st.plotly_chart(actives_fig, use_container_width=True)
+
+# Old GDP charts
 min_value = gdp_df['Year'].min()
 max_value = gdp_df['Year'].max()
 
