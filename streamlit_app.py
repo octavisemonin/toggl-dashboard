@@ -1,25 +1,90 @@
 import streamlit as st
 import pandas as pd
+import requests
+# import plotly.graph_objects as go
+from datetime import datetime, timedelta
 import math
 from pathlib import Path
 
+colors = ['#687090',
+ '#DF1864',
+ '#FFCD05',
+ '#A770A0',
+ '#93278F',
+ '#70CADC',
+ '#3EB891',
+ '#079797',
+ '#4D4D4D']
+
+num_colors = len(colors)
+
 # Set the title and favicon that appear in the Browser's tab bar.
 st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
+    page_title='Toggl dashboard',
+    page_icon=':clock2:', # This is an emoji shortcode. Could be a URL too.
 )
 
 # -----------------------------------------------------------------------------
 # Declare some useful functions.
 
-@st.cache_data
+@st.cache_data(ttl='1d')
 def get_gdp_data():
-    """Grab GDP data from a CSV file.
+    """Grab project data from Toggl.
 
     This uses caching to avoid having to read the file every time. If we were
     reading from an HTTP endpoint instead of a file, it's a good idea to set
     a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
     """
+
+    # later: st.secrets.key
+    headers = {'content-type': 'application/json', 
+               'Authorization': 'Basic %s' %  'MjczMGYyMTQ0MDAxOThjZjlhN2Q1YjMwODkzNDBjNDI6YXBpX3Rva2Vu'}
+
+    # Get clients
+    data = requests.get(
+        'https://api.track.toggl.com/api/v9/workspaces/4691435/clients', 
+        headers=headers
+    )
+
+    clients = pd.DataFrame(data.json())
+
+    # Get projects
+    data = requests.get(
+        'https://api.track.toggl.com/api/v9/workspaces/4691435/projects', 
+        headers=headers
+    )
+
+    projects = pd.DataFrame(data.json())
+
+    projects = pd.merge(
+        projects, clients[['name','id']], 
+        left_on='client_id', right_on='id',
+        suffixes=['','_client']
+    )
+
+    # Calculations and formatting
+    projects['start_date'] = pd.to_datetime(projects['start_date'], errors='coerce')
+    projects['end_date'] = pd.to_datetime(projects['end_date'], errors='coerce')
+
+    projects['duration_days'] = (projects['end_date'] - projects['start_date']).dt.days
+    projects['fraction_complete'] = (datetime.now() - projects['start_date']).dt.days / projects['duration_days']
+    projects.loc[projects['fraction_complete'] > 1,'fraction_complete'] = 1
+
+    projects['fee_to_date'] = projects['fixed_fee'] * projects['fraction_complete']
+    projects['hourly_rate'] = projects['fee_to_date'] / projects['actual_hours']
+
+    projects['Hours'] = projects['actual_hours']
+    projects['Effective $/hr'] = projects['hourly_rate']
+    projects['Value (USD)'] = projects['fixed_fee']
+    projects['Value (k$)'] = projects['Value (USD)'].dropna().map(lambda n: f'${int(n/1000)}k')
+    projects['Label'] = projects['name'].str[:] + ', ' + projects['Value (k$)'].str[:]
+    projects['Offset'] = 5
+
+    projects = projects.dropna(subset=['hourly_rate'])
+    projects = projects.sort_values('Effective $/hr')
+
+    projects = projects.dropna(subset=['hourly_rate'])
+    projects['Left'] = projects['actual_hours'].cumsum() - projects['actual_hours']
 
     # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
     DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
@@ -55,16 +120,16 @@ def get_gdp_data():
     # Convert years from string to integers
     gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
 
-    return gdp_df
+    return gdp_df,projects
 
-gdp_df = get_gdp_data()
+gdp_df,projects = get_gdp_data()
 
 # -----------------------------------------------------------------------------
 # Draw the actual page
 
 # Set the title that appears at the top of the page.
 '''
-# :earth_americas: GDP dashboard
+# :clock2: Toggl dashboard
 
 Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
 notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
@@ -75,6 +140,12 @@ But it's otherwise a great (and did I mention _free_?) source of data.
 ''
 ''
 
+
+# Toggl chart
+projects['color'] = [colors[i % num_colors] for i in range(len(projects))]
+
+
+# Old GPT charts
 min_value = gdp_df['Year'].min()
 max_value = gdp_df['Year'].max()
 
