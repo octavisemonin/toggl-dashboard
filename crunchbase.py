@@ -292,7 +292,7 @@ def get_many_rounds(identifiers, by="funded_organization_identifier"):
     url = "https://api.crunchbase.com/api/v4/searches/funding_rounds"
     return send_request("POST", url, userkey, query)
 
-@st.cache_data(ttl='1d')
+@st.cache_data(ttl='1d', show_spinner='Getting funding rounds (takes ~2m)')
 def get_all_rounds(permalinks, by="funded_organization_identifier"):
     """Get and parse funding rounds for a list of an arbitrary number of permalinks"""
 

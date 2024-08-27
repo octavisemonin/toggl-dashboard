@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import time
 from pathlib import Path
 import powerhouse as ph
@@ -55,7 +55,7 @@ def get_toggl_data():
 
 projects = get_toggl_data()
 
-@st.cache_data(ttl='1d')
+@st.cache_data(ttl='1d', show_spinner='Getting Startup Network...')
 def get_startup_network():
     sn = ph.get_startup_network()
 
@@ -64,7 +64,7 @@ def get_startup_network():
     sn['permalink'] = sn['permalink_streak'].map(lambda s: s.split('/')[-1] if s else None)
     sn['domain'] = sn['Website'].map(ph.find_domain)
 
-    st.toast("Streak load complete!")
+    st.toast("Streak load complete!", icon='✅')
     return sn
 
 def simple_text_money(f):
@@ -131,23 +131,21 @@ with data_container:
 # :moneybag: Rounds last week
 '''
 
-with st.spinner('Getting Startup Network...'):
-    sn = get_startup_network()
+sn = get_startup_network()
 
 permalinks = sn['permalink'].loc[~sn['domain'].isin(ph.exclude_list)]
 permalinks = permalinks.dropna().drop_duplicates().tolist()
-
-with st.spinner('Getting funding rounds (takes ~2m)'):
-    rounds = cb.get_all_rounds(permalinks)
-
-st.toast("Funding rounds complete!")
+rounds = cb.get_all_rounds(permalinks)
+st.toast("Funding rounds complete!", icon='💰')
 
 cols = ['permalink','Website','Stage']
 rounds = pd.merge(rounds, sn[cols].drop_duplicates(subset=['permalink']))
 
-now = datetime.now() - timedelta(days=0)
-cutoff = datetime.now() - timedelta(days=8)
-recent_rounds = rounds.loc[rounds['announced_on'].between(cutoff, now) & 
+t = date.today()
+today = datetime(t.year, t.month, t.day)
+start = today - timedelta(days=7 + t.isoweekday())
+end = start + timedelta(days=7)
+recent_rounds = rounds.loc[rounds['announced_on'].between(start, end) & 
                           ~rounds['Stage'].isin(['Out of Scope'])]
 
 total_money = recent_rounds['usd_raised'].sum() / 1E6
@@ -157,12 +155,11 @@ rounds_text = recent_rounds.sort_values('usd_raised').apply(round_to_text, axis=
 
 st.write(summary_string+'\n'+'\n'.join(rounds_text))
 ''
-st.markdown(summary_string+'\n'+'\n'.join(rounds_text))
 
-# to be deleted:
+# For debugging:
 cols = ['name','announced_on','created_at',
         'investment_type','num_investors','investor_names',
         'usd_raised','Stage']
-st.dataframe(recent_rounds[cols].sort_values('announced_on'))
+st.dataframe(recent_rounds[cols].sort_values('announced_on').reset_index())
 
 st.button("Rerun")
