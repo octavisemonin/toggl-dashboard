@@ -292,8 +292,16 @@ def get_many_rounds(identifiers, by="funded_organization_identifier"):
     url = "https://api.crunchbase.com/api/v4/searches/funding_rounds"
     return send_request("POST", url, userkey, query)
 
-def parse_all_rounds(entities, by="funded_organization_identifier"):
-    """Parse funding rounds for a list of an arbitrary number of permalinks"""
+@st.cache_data(ttl='1d')
+def get_all_rounds(permalinks, _bar, by="funded_organization_identifier"):
+    """Get and parse funding rounds for a list of an arbitrary number of permalinks"""
+
+    entities = []
+
+    for i in range(0, len(permalinks), 200):
+        d = get_many_rounds(permalinks[i:i+200])
+        entities = entities + d['entities']
+        _bar.progress((i/len(permalinks)), text="Loading rounds...")
 
     rounds = pd.DataFrame(r['properties'] for r in entities).reset_index(drop=True)
 
