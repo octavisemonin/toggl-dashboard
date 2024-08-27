@@ -293,15 +293,21 @@ def get_many_rounds(identifiers, by="funded_organization_identifier"):
     return send_request("POST", url, userkey, query)
 
 @st.cache_data(ttl='1d')
-def get_all_rounds(permalinks, _bar, by="funded_organization_identifier"):
+def get_all_rounds(permalinks, by="funded_organization_identifier"):
     """Get and parse funding rounds for a list of an arbitrary number of permalinks"""
+
+    progress_text = "Loading rounds..."
+    bar = st.progress(0, text=progress_text)
 
     entities = []
 
     for i in range(0, len(permalinks), 200):
         d = get_many_rounds(permalinks[i:i+200])
         entities = entities + d['entities']
-        _bar.progress((i/len(permalinks)), text="Loading rounds...")
+        bar.progress((i/len(permalinks)), text=progress_text)
+
+    time.sleep(1)
+    bar.empty()
 
     rounds = pd.DataFrame(r['properties'] for r in entities).reset_index(drop=True)
 

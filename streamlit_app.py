@@ -64,6 +64,7 @@ def get_startup_network():
     sn['permalink'] = sn['permalink_streak'].map(lambda s: s.split('/')[-1] if s else None)
     sn['domain'] = sn['Website'].map(ph.find_domain)
 
+    st.toast("Streak load complete!")
     return sn
 
 def simple_text_money(f):
@@ -133,17 +134,13 @@ with data_container:
 with st.spinner('Getting Startup Network...'):
     sn = get_startup_network()
 
-st.success("Streak load complete!")
-
-progress_text = "Loading rounds..."
-my_bar = st.progress(0, text=progress_text)
-
 permalinks = sn['permalink'].loc[~sn['domain'].isin(ph.exclude_list)]
 permalinks = permalinks.dropna().drop_duplicates().tolist()
 
-rounds = cb.get_all_rounds(permalinks, my_bar)
-time.sleep(1)
-my_bar.empty()
+with st.spinner('Getting funding rounds (takes ~2m)'):
+    rounds = cb.get_all_rounds(permalinks)
+
+st.toast("Funding rounds complete!")
 
 cols = ['permalink','Website','Stage']
 rounds = pd.merge(rounds, sn[cols].drop_duplicates(subset=['permalink']))
