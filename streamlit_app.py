@@ -18,7 +18,7 @@ st.set_page_config(
 # -----------------------------------------------------------------------------
 # Declare some useful functions.
 
-@st.cache_data(ttl='1d')
+@st.cache_data(ttl='1d', show_spinner='Getting Toggl data...')
 def get_toggl_data():
     """Get project data from Toggl.
 
@@ -154,6 +154,8 @@ summary_string = f"\\${total_money:.0f}M raised in {total_rounds} rounds last we
 rounds_text = recent_rounds.sort_values('usd_raised').apply(round_to_text, axis=1)
 
 st.write(summary_string+'\n'+'\n'.join(rounds_text))
+
+''
 ''
 
 # For debugging:
